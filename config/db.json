@@ -1,0 +1,6 @@
+{
+  "database": "vkhack",
+  "user": "postgres",
+  "password": "postgres",
+  "host": "localhost"
+}
