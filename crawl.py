@@ -8,7 +8,7 @@ from crawlers import parse_imgflip
 from pony import orm
 from data import Meme
 
-parser = argparse.ArgumentParser('Parse memes.')
+parser = argparse.ArgumentParser('Parse static.')
 parser.add_argument('--resource', type=str, required=True, help='resource to parse')
 parser.add_argument('--page_from', type=int, required=True, help='start page')
 parser.add_argument('--page_to', type=int, required=True, help='end page')

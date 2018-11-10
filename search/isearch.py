@@ -20,7 +20,6 @@ class ISearcher:
     def __init__(self, path: str):
         self.path = path
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.embedder = Embedder()
         embeddings, mapping = self._build_index()
         self.index_to_id = mapping
         self.matcher = Matcher(embeddings)
@@ -52,13 +51,14 @@ class ISearcher:
             with self.MAPPING_DUMP.open('r') as f:
                 mapping = json.load(f)
         else:
+            embedder = Embedder()
             images = list(self._load_images())
             embeddings = np.zeros((len(images), self.EMBEDDING_SIZE))
             mapping = {}
 
             for index, (image_id, img) in enumerate(images):
                 mapping[index] = image_id
-                embeddings[index] = self.embedder.embed(img)
+                embeddings[index] = embedder.embed(img)
 
             np.save(str(self.EMBEDDING_DUMP), embeddings)
             with self.MAPPING_DUMP.open('w') as f:

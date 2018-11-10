@@ -1,41 +1,63 @@
+import io
 import logging
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import quote_plus
 
+import numpy as np
 import requests
-
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+import torch
+from PIL import Image as PILImage
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from memgen.sampler import TextSampler
+from memgen.stages.printer import Printer
+from memsearch.text import TextSearcher
 from pony import orm
-from data import Meme
+
 from data import Image
+from data import Meme
 from data import Question
-from pathlib import Path
 from search import ISearcher
 
 
 class Server:
-    app = Flask(__name__)
+    ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
+    MATRIX_PATH = Path('gen_data/matrix.npy')
+    NEW_META_PATH = Path('gen_data/processed_reddit_data.pth')
+    IMAGE_FOLDER = Path('images')
+
+    matrix = np.load(MATRIX_PATH)
+    meta = torch.load(NEW_META_PATH)
+    sampler = TextSampler(matrix, meta)
+    printer = Printer()
+
+    app = Flask(__name__, static_folder='static')
     CORS(app)
 
-    isearcher = ISearcher('images')
+    isearcher = ISearcher(IMAGE_FOLDER)
+    tsearcher = TextSearcher()
 
-    def __init__(self, path: str):
-        self.path = path
+    def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def run(self, host: str):
         self.app.run(host=host)
 
+    @staticmethod
+    def allowed_file(filename):
+        return '.' in filename and \
+               filename.rsplit('.', 1)[1].lower() in Server.ALLOWED_EXTENSIONS
+
     @orm.db_session
     def download_images(self):
         self.logger.info('Downloading images...')
-        folder = Path(self.path)
 
-        if not folder.exists():
-            folder.mkdir()
+        if not self.IMAGE_FOLDER.exists():
+            self.IMAGE_FOLDER.mkdir()
 
         for meme in Meme.select():
-            image = folder / str(meme.id)
+            image = self.IMAGE_FOLDER / str(meme.id)
 
             if not image.exists():
                 r = requests.get(meme.image, stream=True)
@@ -63,6 +85,38 @@ class Server:
         return jsonify(memes)
 
     @staticmethod
+    @app.route('/isearch', methods=['POST'])
+    @orm.db_session
+    def image_search():
+        file = request.files['file']
+        if file and Server.allowed_file(file.filename):
+            image = PILImage.open(io.BytesIO(file.read()))
+            result = Server.isearcher.search_img(image, top_k=3)
+            return jsonify({'results': result})
+
+    @staticmethod
+    @app.route('/search')
+    @orm.db_session
+    def text_search():
+        query = request.args.get('q')
+        result = list(map(str, Server.tsearcher.search(query)[:3]))
+        return jsonify({'results': result})
+
+    @staticmethod
+    @app.route('/generate', methods=['POST'])
+    @orm.db_session
+    def generate_meme():
+        file = request.files['file']
+        if file and Server.allowed_file(file.filename):
+            image = PILImage.open(io.BytesIO(file.read()))
+            text = Server.sampler.sample(image)
+            meme = Server.printer.print(image, text)
+            current_date = datetime.now().strftime('%Y.%m.%d %H.%M.%S')
+            file_name = f'{current_date}.png'
+            meme.save(f'static/{file_name}')
+            return jsonify({'result': quote_plus(file_name)})
+
+    @staticmethod
     @app.route('/quiz')
     @orm.db_session
     def get_quiz():
@@ -70,8 +124,13 @@ class Server:
         return jsonify({'id': id,
                         'questions': [{'text': q.text,
                                        'answer': q.answer,
-                                       'memes': [q.meme_1, q.meme_2, q.meme_3]}
+                                       'static': [q.meme_1, q.meme_2, q.meme_3]}
                                       for q in Question.select(lambda it: it.quiz == id)]})
+
+    @orm.db_session
+    def build_text_index(self):
+        data = [(it.id, it.about) for it in Meme.select()]
+        self.tsearcher.build_index(data)
 
     @staticmethod
     @orm.db_session
@@ -105,6 +164,11 @@ class Server:
 
 
 if __name__ == "__main__":
-    server = Server('images')
+    logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+    server = Server()
+
+    # Build text index
+    # server.build_text_index()
+
     server.download_images()
     server.run('0.0.0.0')

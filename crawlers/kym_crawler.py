@@ -16,7 +16,7 @@ def _extract_meme_urls(page: BeautifulSoup) -> [str]:
     urls = set()
 
     for href in map(lambda tag: tag.get('href'), page.find_all(name='a', attrs={'class': 'photo'})):
-        if href and str.startswith(href, '/memes/'):
+        if href and str.startswith(href, '/static/'):
             urls.add(urlparse(href).path)
 
     return urls
@@ -71,4 +71,4 @@ def _parse_page(page_url: str):
 def parse_know_your_meme(page_from: int, page_to: int):
     for page_id in range(page_from, page_to):
         logger.info(f'Parse page {page_id}')
-        _parse_page(_HOST + '/memes/popular/page/' + str(page_id))
+        _parse_page(_HOST + '/static/popular/page/' + str(page_id))
