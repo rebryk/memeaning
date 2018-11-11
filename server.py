@@ -2,9 +2,9 @@ import io
 import logging
 import pickle
 import random
+import argparse
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote_plus
 
 import face_recognition
 import numpy as np
@@ -78,10 +78,10 @@ class Server:
     @app.route('/memes')
     @orm.db_session
     def get_memes():
-        id = request.args.get('id')
+        id_ = request.args.get('id')
 
-        if id is not None and Meme.exists(id=int(id)):
-            return jsonify(Server._get_meme_long_desc(Meme.get(id=int(id))))
+        if id_ is not None and Meme.exists(id=int(id_)):
+            return jsonify(Server._get_meme_long_desc(Meme.get(id=int(id_))))
 
         memes = [Server._get_meme_short_desc(meme) for meme in Meme.select()]
 
@@ -134,21 +134,21 @@ class Server:
                 file_to_load = f'dataset_updated/{folder}/training_set/{Server.PAINTING_FOLDER}/{key[1:]}.jpg'
                 meme = PILImage.open(file_to_load)
 
-            current_date = datetime.now().strftime('%Y.%m.%d %H.%M.%S')
+            current_date = datetime.now().strftime('%Y.%m.%d.%H.%M.%S')
             file_name = f'{current_date}.png'
             meme.save(f'static/{file_name}')
-            return jsonify({'result': quote_plus(file_name)})
+            return jsonify({'result': file_name})
 
     @staticmethod
     @app.route('/quiz')
     @orm.db_session
     def get_quiz():
-        id = int(request.args.get('id'))
-        return jsonify({'id': id,
+        id_ = int(request.args.get('id'))
+        return jsonify({'id': id_,
                         'questions': [{'text': q.text,
                                        'answer': q.answer,
-                                       'static': [q.meme_1, q.meme_2, q.meme_3]}
-                                      for q in Question.select(lambda it: it.quiz == id)]})
+                                       'memes': [q.meme_1, q.meme_2, q.meme_3]}
+                                      for q in Question.select(lambda it: it.quiz == id_)]})
 
     @orm.db_session
     def build_text_index(self):
@@ -187,11 +187,16 @@ class Server:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser('Server')
+    parser.add_argument('-i', action='store_true', help='Build text index')
+    args = parser.parse_args()
+
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
     server = Server()
 
     # Build text index
-    # server.build_text_index()
+    if args.i:
+        server.build_text_index()
 
     server.download_images()
     server.run('0.0.0.0')
