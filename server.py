@@ -1,9 +1,12 @@
 import io
 import logging
+import pickle
+import random
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote_plus
 
+import face_recognition
 import numpy as np
 import requests
 import torch
@@ -22,15 +25,19 @@ from search import ISearcher
 
 
 class Server:
-    ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
     MATRIX_PATH = Path('gen_data/matrix.npy')
     NEW_META_PATH = Path('gen_data/processed_reddit_data.pth')
     IMAGE_FOLDER = Path('images')
+    PAINTING_FOLDER = 'painting'
 
     matrix = np.load(MATRIX_PATH)
     meta = torch.load(NEW_META_PATH)
     sampler = TextSampler(matrix, meta)
     printer = Printer()
+
+    with open(f'latent_space/{PAINTING_FOLDER}.p', 'rb') as fp:
+        paintings = pickle.load(fp)
 
     app = Flask(__name__, static_folder='static')
     CORS(app)
@@ -104,13 +111,29 @@ class Server:
 
     @staticmethod
     @app.route('/generate', methods=['POST'])
-    @orm.db_session
     def generate_meme():
+        id_ = int(request.values['id'])
         file = request.files['file']
         if file and Server.allowed_file(file.filename):
             image = PILImage.open(io.BytesIO(file.read()))
-            text = Server.sampler.sample(image)
-            meme = Server.printer.print(image, text)
+
+            if id_ == 1:
+                text = Server.sampler.sample(image)
+                meme = Server.printer.print(image, text)
+            else:
+                image = np.array(image.convert('RGB'))
+                embeddings = face_recognition.face_encodings(image)
+
+                if len(embeddings) > 0:
+                    photo = embeddings[0]
+                    key = min(Server.paintings.items(), key=lambda x: np.sum(np.sqrt((photo - np.array(x[1])) ** 2)))[0]
+                else:
+                    key = random.choice(list(Server.paintings.keys()))
+
+                folder = '' if key[0] == '1' else ' 2'
+                file_to_load = f'dataset_updated/{folder}/training_set/{Server.PAINTING_FOLDER}/{key[1:]}.jpg'
+                meme = PILImage.open(file_to_load)
+
             current_date = datetime.now().strftime('%Y.%m.%d %H.%M.%S')
             file_name = f'{current_date}.png'
             meme.save(f'static/{file_name}')
