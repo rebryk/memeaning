@@ -1,6 +1,7 @@
 
 # MeMeaning
-Backend for MeMeaning project.
+MeMeaning - it's new meme wikipedia!
+![MeMeaning](assets/memeaning.png)
 
 ## Installation
 Please, clone this repository and install python requirements:
@@ -39,3 +40,6 @@ Finally you can spin server with the following command:
 ```
 python server.py -i
 ```
+
+## License
+[MIT](LICENSE)
